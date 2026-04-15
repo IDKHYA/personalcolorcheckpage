@@ -1,0 +1,5 @@
+{
+  "name": "ChromaSync: Hybrid Personal Color Analysis",
+  "description": "A sophisticated personal color measurement system combining questionnaire diagnostics, photo-based color analysis, and LLM-driven fusion for precise results.",
+  "requestFramePermissions": ["camera"]
+}
