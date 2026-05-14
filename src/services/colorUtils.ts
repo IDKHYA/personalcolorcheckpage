@@ -123,6 +123,82 @@ export function deltaE(first: LabColor, second: LabColor) {
   return Math.sqrt((first.l - second.l) ** 2 + (first.a - second.a) ** 2 + (first.b - second.b) ** 2);
 }
 
+// CIEDE2000 표준 색차 공식입니다.
+// CIE76(단순 유클리드)보다 파란 계열 비균일성을 보정해 사람 눈의 지각과 상관관계가 더 높습니다.
+// 의류 팔레트 매칭처럼 "같은 계열인가"를 판단할 때 CIE76보다 정확합니다.
+export function deltaE2000(lab1: LabColor, lab2: LabColor): number {
+  const { l: L1, a: a1, b: b1 } = lab1;
+  const { l: L2, a: a2, b: b2 } = lab2;
+
+  const C1 = Math.sqrt(a1 ** 2 + b1 ** 2);
+  const C2 = Math.sqrt(a2 ** 2 + b2 ** 2);
+  const Cbar = (C1 + C2) / 2;
+  const Cbar7 = Cbar ** 7;
+  const G = 0.5 * (1 - Math.sqrt(Cbar7 / (Cbar7 + 25 ** 7)));
+  const a1p = a1 * (1 + G);
+  const a2p = a2 * (1 + G);
+
+  const C1p = Math.sqrt(a1p ** 2 + b1 ** 2);
+  const C2p = Math.sqrt(a2p ** 2 + b2 ** 2);
+  const toHp = (b: number, ap: number): number => {
+    if (b === 0 && ap === 0) return 0;
+    const h = Math.atan2(b, ap) * (180 / Math.PI);
+    return h < 0 ? h + 360 : h;
+  };
+  const h1p = toHp(b1, a1p);
+  const h2p = toHp(b2, a2p);
+
+  const dLp = L2 - L1;
+  const dCp = C2p - C1p;
+  let dhp: number;
+  if (C1p * C2p === 0) {
+    dhp = 0;
+  } else if (Math.abs(h2p - h1p) <= 180) {
+    dhp = h2p - h1p;
+  } else if (h2p - h1p > 180) {
+    dhp = h2p - h1p - 360;
+  } else {
+    dhp = h2p - h1p + 360;
+  }
+  const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin((dhp / 2) * (Math.PI / 180));
+
+  const Lbarp = (L1 + L2) / 2;
+  const Cbarp = (C1p + C2p) / 2;
+  let hbarp: number;
+  if (C1p * C2p === 0) {
+    hbarp = h1p + h2p;
+  } else if (Math.abs(h1p - h2p) <= 180) {
+    hbarp = (h1p + h2p) / 2;
+  } else if (h1p + h2p < 360) {
+    hbarp = (h1p + h2p + 360) / 2;
+  } else {
+    hbarp = (h1p + h2p - 360) / 2;
+  }
+
+  const T =
+    1 -
+    0.17 * Math.cos((hbarp - 30) * (Math.PI / 180)) +
+    0.24 * Math.cos(2 * hbarp * (Math.PI / 180)) +
+    0.32 * Math.cos((3 * hbarp + 6) * (Math.PI / 180)) -
+    0.20 * Math.cos((4 * hbarp - 63) * (Math.PI / 180));
+
+  const SL = 1 + 0.015 * (Lbarp - 50) ** 2 / Math.sqrt(20 + (Lbarp - 50) ** 2);
+  const SC = 1 + 0.045 * Cbarp;
+  const SH = 1 + 0.015 * Cbarp * T;
+
+  const Cbarp7 = Cbarp ** 7;
+  const RC = 2 * Math.sqrt(Cbarp7 / (Cbarp7 + 25 ** 7));
+  const dTheta = 30 * Math.exp(-(((hbarp - 275) / 25) ** 2));
+  const RT = -RC * Math.sin(2 * dTheta * (Math.PI / 180));
+
+  return Math.sqrt(
+    (dLp / SL) ** 2 +
+    (dCp / SC) ** 2 +
+    (dHp / SH) ** 2 +
+    RT * (dCp / SC) * (dHp / SH),
+  );
+}
+
 // 색상의 상대 휘도를 계산합니다. 얼굴 대비, 사진 노출, 의류 밝기 판단의 기반값입니다.
 export function luminance({ r, g, b }: RgbColor) {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;

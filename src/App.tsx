@@ -43,7 +43,7 @@ import Questionnaire from './components/Questionnaire';
 import { SEASON_PROFILES } from './personalColorWorkbook';
 import { FAMILY_GUIDES, FAMILY_LABELS, PERSONAL_COLOR_MODEL_NOTE, SEASON_DETAILS } from './seasonContent';
 import { fuseResults } from './services/geminiService';
-import { deltaE, hexToRgb, rgbToLab } from './services/colorUtils';
+import { deltaE2000, hexToRgb, rgbToHsl, rgbToLab } from './services/colorUtils';
 import { useWeather } from './hooks/useWeather';
 import { WeatherBand, WEATHER_BANDS } from './lib/weather';
 import { FinalResult, PhotoAnalysisResult, QuestionnaireScores, SeasonId } from './types';
@@ -899,12 +899,12 @@ function scoreItemForPersonalColor(item: ClothingItem, result: FinalResult | nul
   }
 
   const itemLab = rgbToLab(hexToRgb(item.representativeHex));
-  const paletteDistance = Math.min(...result.palette.map((hex) => deltaE(itemLab, rgbToLab(hexToRgb(hex)))));
+  const paletteDistance = Math.min(...result.palette.map((hex) => deltaE2000(itemLab, rgbToLab(hexToRgb(hex)))));
   const worstColors = SEASON_DETAILS[result.seasonTop1Id]?.worstColors ?? [];
-  const avoidDistance = worstColors.length ? Math.min(...worstColors.map((hex) => deltaE(itemLab, rgbToLab(hexToRgb(hex))))) : 100;
-  const paletteScore = Math.max(0, 100 - paletteDistance * 3.2);
+  const avoidDistance = worstColors.length ? Math.min(...worstColors.map((hex) => deltaE2000(itemLab, rgbToLab(hexToRgb(hex))))) : 100;
+  const paletteScore = Math.max(0, 100 - paletteDistance * 4.5);
   const utilityBonus = item.isNeutral || item.isDenim ? 8 : 0;
-  const avoidPenalty = avoidDistance < 18 ? 22 : avoidDistance < 28 ? 10 : 0;
+  const avoidPenalty = avoidDistance < 10 ? 22 : avoidDistance < 16 ? 10 : 0;
   const score = Math.max(0, Math.min(100, Math.round(paletteScore + utilityBonus - avoidPenalty)));
 
   return {
@@ -958,6 +958,31 @@ function outfitUniqueKey(items: ScoredClothingItem[]) {
   return items.map(itemUniqueKey).sort().join('|');
 }
 
+// HSL 색상환에서 두 HEX 색상의 hue 각도 차이를 0~180° 범위로 반환합니다.
+function hueAngleDiff(hex1: string, hex2: string): number {
+  const h1 = rgbToHsl(hexToRgb(hex1)).h * 360;
+  const h2 = rgbToHsl(hexToRgb(hex2)).h * 360;
+  const diff = Math.abs(h1 - h2);
+  return diff > 180 ? 360 - diff : diff;
+}
+
+// Itten 색상 이론에 따른 조화 유형과 기본 점수입니다.
+const HARMONY_BASE_SCORES: Record<string, number> = {
+  monochromatic: 80,  // 0~15°: 같은 색 명도/채도 변주
+  analogous: 82,      // 16~45°: 인접색, 차분하고 통일감 있음
+  tension: 55,        // 46~90°: 어색한 충돌 구간
+  triadic: 76,        // 91~135°: 균형 잡힌 3색 조화
+  complementary: 88,  // 136~180°: 보색, 강하고 세련된 대비
+};
+
+function classifyHarmonyType(angleDiff: number): string {
+  if (angleDiff <= 15) return 'monochromatic';
+  if (angleDiff <= 45) return 'analogous';
+  if (angleDiff <= 90) return 'tension';
+  if (angleDiff <= 135) return 'triadic';
+  return 'complementary';
+}
+
 // 코디 내 패턴 조합 페널티를 계산합니다. 그래픽+솔리드, 같은 패턴 중복은 감점됩니다.
 function calculatePatternPenalty(items: ScoredClothingItem[]): number {
   const patterns = items.map((i) => i.patternType).filter((p) => p !== 'solid');
@@ -967,24 +992,29 @@ function calculatePatternPenalty(items: ScoredClothingItem[]): number {
   return 8;
 }
 
-// 상의·하의 색상의 Lab ΔE와 시즌 선호 대비감을 결합해 실제 조화 점수를 계산합니다.
+// Itten 색상 이론 기반 hue 각도로 조화 유형을 분류하고, 퍼스널컬러 시즌의 대비 선호도로 점수를 조정합니다.
 function calculateHarmonyScore(items: ScoredClothingItem[], result: FinalResult | null): number {
   const top = items.find((i) => i.category === '상의');
   const bottom = items.find((i) => i.category === '하의');
   if (!top || !bottom) return 75;
-  const topLab = rgbToLab(hexToRgb(top.representativeHex));
-  const bottomLab = rgbToLab(hexToRgb(bottom.representativeHex));
-  const colorDist = deltaE(topLab, bottomLab);
-  const preferredContrast = result ? SEASON_PROFILES[result.seasonTop1Id].traits.contrast : 0;
-  let idealMin: number;
-  let idealMax: number;
-  if (preferredContrast > 0.5) { idealMin = 28; idealMax = 65; }
-  else if (preferredContrast < -0.2) { idealMin = 5; idealMax = 22; }
-  else { idealMin = 12; idealMax = 42; }
-  const inRange = colorDist >= idealMin && colorDist <= idealMax;
-  const neutralBonus = (top.isNeutral || bottom.isNeutral) ? 12 : 0;
+
   const patternPenalty = calculatePatternPenalty(items);
-  return Math.min(100, Math.max(0, (inRange ? 82 : 55) + neutralBonus - patternPenalty));
+
+  // 중성색은 hue가 무의미하므로 별도 처리합니다.
+  if (top.isNeutral || bottom.isNeutral) {
+    return Math.min(100, Math.max(0, 85 - patternPenalty));
+  }
+
+  const angleDiff = hueAngleDiff(top.representativeHex, bottom.representativeHex);
+  const harmonyType = classifyHarmonyType(angleDiff);
+  let score = HARMONY_BASE_SCORES[harmonyType];
+
+  // 시즌 대비 선호도에 따라 타입별 가산/감산을 적용합니다.
+  const preferredContrast = result ? SEASON_PROFILES[result.seasonTop1Id].traits.contrast : 0;
+  if (harmonyType === 'complementary') score += preferredContrast > 0.5 ? 6 : preferredContrast < -0.2 ? -10 : 0;
+  if (harmonyType === 'analogous') score += preferredContrast < -0.2 ? 6 : 0;
+
+  return Math.min(100, Math.max(0, score - patternPenalty));
 }
 
 // 동일 아이템이 결과 목록에 과도하게 반복되지 않도록 아이템당 최대 등장 횟수를 제한합니다.
