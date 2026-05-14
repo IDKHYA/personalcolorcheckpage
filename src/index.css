@@ -2096,10 +2096,113 @@ label {
   font-weight: 650;
 }
 
+.outfit-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.harmony-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #EEF2FF;
+  color: #4338CA;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.outfit-band-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #F0FDF4;
+  color: #16A34A;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.score-circle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid #111827;
+  flex-shrink: 0;
+}
+
+.score-circle strong {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.score-circle span {
+  font-size: 10px;
+  color: #6B7280;
+}
+
+.outfit-color-strip {
+  display: flex;
+  gap: 4px;
+  height: 10px;
+}
+
+.outfit-color-swatch {
+  flex: 1;
+  border-radius: 3px;
+}
+
 .recommend-item-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
+}
+
+.outfit-item-thumb {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.outfit-item-thumb img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.fit-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.fit-badge.fit-s { background: #7C3AED; }
+.fit-badge.fit-a { background: #2563EB; }
+.fit-badge.fit-b { background: #059669; }
+.fit-badge.fit-c { background: #D97706; }
+.fit-badge.fit-d { background: #DC2626; }
+
+.item-type-label {
+  font-size: 11px;
+  color: #6B7280;
+  text-align: center;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .recommend-item-strip img {
@@ -2107,6 +2210,25 @@ label {
   border-radius: 12px;
   object-fit: cover;
 }
+
+.score-grade-row {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.score-grade-row span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.grade-S { color: #7C3AED; }
+.grade-A { color: #2563EB; }
+.grade-B { color: #059669; }
+.grade-C { color: #D97706; }
+.grade-D { color: #DC2626; }
 
 .tryon-stage {
   display: grid;

@@ -156,6 +156,7 @@ interface ScoredClothingItem extends ClothingItem {
 interface OutfitRecommendation {
   id: string;
   title: string;
+  harmonyType: string;
   score: number;
   personalScore: number;
   harmonyScore: number;
@@ -965,6 +966,40 @@ function classifyHarmonyType(angleDiff: number): string {
   return 'complementary';
 }
 
+const HARMONY_TITLE_KO: Record<string, string> = {
+  monochromatic: '심플 모노톤',
+  analogous: '자연스러운 유사색',
+  tension: '포인트 배색',
+  triadic: '다채로운 삼색',
+  complementary: '선명한 대비',
+  neutral: '차분한 무채색',
+};
+
+const HARMONY_BADGE_KO: Record<string, string> = {
+  monochromatic: '단색 조화',
+  analogous: '유사색 조화',
+  tension: '포인트 배색',
+  triadic: '삼각 배색',
+  complementary: '보색 대비',
+  neutral: '무채색 조화',
+};
+
+function getHarmonyType(items: ScoredClothingItem[]): string {
+  const top = items.find((i) => i.category === '상의');
+  const bottom = items.find((i) => i.category === '하의');
+  if (!top || !bottom) return 'neutral';
+  if (top.isNeutral || bottom.isNeutral) return 'neutral';
+  return classifyHarmonyType(hueAngleDiff(top.representativeHex, bottom.representativeHex));
+}
+
+function scoreGrade(score: number): string {
+  if (score >= 90) return 'S';
+  if (score >= 80) return 'A';
+  if (score >= 70) return 'B';
+  if (score >= 60) return 'C';
+  return 'D';
+}
+
 // 코디 내 패턴 조합 페널티를 계산합니다. 그래픽+솔리드, 같은 패턴 중복은 감점됩니다.
 function calculatePatternPenalty(items: ScoredClothingItem[]): number {
   const patterns = items.map((i) => i.patternType).filter((p) => p !== 'solid');
@@ -1017,39 +1052,37 @@ function buildRecommendations(items: ScoredClothingItem[], band: RecommendationW
   const tops = weatherFiltered.filter((item) => item.category === '상의');
   const bottoms = weatherFiltered.filter((item) => item.category === '하의');
   const outerwear = weatherFiltered.filter((item) => item.category === '아우터');
-  const shoes = weatherFiltered.filter((item) => item.category === '신발');
   const outfits: OutfitRecommendation[] = [];
   const seenOutfits = new Set<string>();
   const outerOptions = [undefined, ...outerwear.sort((a, b) => getWeatherScore(b, band) - getWeatherScore(a, band))];
-  const shoeOptions = shoes.length > 0 ? [undefined, ...shoes] : [undefined];
 
   tops.forEach((top) => {
     bottoms.forEach((bottom) => {
       outerOptions.forEach((outer) => {
-        shoeOptions.forEach((shoe) => {
-      const outfitItems = dedupeRecommendationItems([outer, top, bottom, shoe].filter(Boolean) as ScoredClothingItem[]);
-      if (outfitItems.length < 2) return;
-      const key = outfitUniqueKey(outfitItems);
-      if (seenOutfits.has(key)) return;
-      seenOutfits.add(key);
-      const personalScore = Math.round(outfitItems.reduce((sum, item) => sum + (item.personalFitScore ?? 55), 0) / outfitItems.length);
-      const weatherScore = Math.round(outfitItems.reduce((sum, item) => sum + getWeatherScore(item, band), 0) / outfitItems.length);
-      const harmonyScore = calculateHarmonyScore(outfitItems, result);
-      const stabilityScore = outfitItems.every((item) => item.availabilityStatus === '보유중') ? 92 : 68;
-      const score = Math.round(personalScore * 0.38 + weatherScore * 0.22 + harmonyScore * 0.28 + stabilityScore * 0.12);
-      outfits.push({
-        id: `${top.id}-${bottom.id}-${outer?.id ?? 'noouter'}-${shoe?.id ?? 'noshoe'}`,
-        title: `${mode} 추천 코디`,
-        score,
-        personalScore,
-        harmonyScore,
-        weatherScore,
-        stabilityScore,
-        items: outfitItems,
-        reason: band === '상관없음' ? '퍼스널 컬러 적합도와 코디 안정성을 우선 반영했습니다.' : `퍼스널 컬러 적합도와 ${band} 날씨 조건을 함께 반영했습니다.`,
-        weatherBand: band,
-        mode,
-      });
+        const outfitItems = dedupeRecommendationItems([outer, top, bottom].filter(Boolean) as ScoredClothingItem[]);
+        if (outfitItems.length < 2) return;
+        const key = outfitUniqueKey(outfitItems);
+        if (seenOutfits.has(key)) return;
+        seenOutfits.add(key);
+        const personalScore = Math.round(outfitItems.reduce((sum, item) => sum + (item.personalFitScore ?? 55), 0) / outfitItems.length);
+        const weatherScore = Math.round(outfitItems.reduce((sum, item) => sum + getWeatherScore(item, band), 0) / outfitItems.length);
+        const harmonyScore = calculateHarmonyScore(outfitItems, result);
+        const stabilityScore = outfitItems.every((item) => item.availabilityStatus === '보유중') ? 92 : 68;
+        const score = Math.round(personalScore * 0.38 + weatherScore * 0.22 + harmonyScore * 0.28 + stabilityScore * 0.12);
+        const harmonyType = getHarmonyType(outfitItems);
+        outfits.push({
+          id: `${top.id}-${bottom.id}-${outer?.id ?? 'noouter'}`,
+          title: `${HARMONY_TITLE_KO[harmonyType] ?? ''} ${mode} 코디`,
+          harmonyType,
+          score,
+          personalScore,
+          harmonyScore,
+          weatherScore,
+          stabilityScore,
+          items: outfitItems,
+          reason: band === '상관없음' ? '퍼스널 컬러 적합도와 코디 안정성을 우선 반영했습니다.' : `퍼스널 컬러 적합도와 ${band} 날씨 조건을 함께 반영했습니다.`,
+          weatherBand: band,
+          mode,
         });
       });
     });
@@ -2684,15 +2717,37 @@ function RecommendationList({ recommendations, onSave }: { recommendations: Outf
         {recommendations.map((outfit) => (
           <article className="panel outfit-card" key={outfit.id}>
             <div className="result-head">
-              <div><h3>{outfit.title}</h3><p>{outfit.reason}</p></div>
-              <strong>{outfit.score}점</strong>
+              <div>
+                <h3>{outfit.title}</h3>
+                <div className="outfit-meta-row">
+                  <span className="harmony-badge">{HARMONY_BADGE_KO[outfit.harmonyType] ?? outfit.harmonyType}</span>
+                  <span className="outfit-band-tag">{outfit.weatherBand}</span>
+                </div>
+              </div>
+              <div className="score-circle">
+                <strong>{outfit.score}</strong>
+                <span>점</span>
+              </div>
             </div>
-            <div className="recommend-item-strip">{outfit.items.map((item) => <img key={item.id} src={clothingDisplayImage(item)} alt={item.type} />)}</div>
-            <details className="outfit-detail">
-              <summary>자세히 보기</summary>
-              <div className="score-grid"><span>퍼컬 {outfit.personalScore}</span><span>조화 {outfit.harmonyScore}</span><span>날씨 {outfit.weatherScore}</span><span>안정 {outfit.stabilityScore}</span></div>
-              <div className="mini-palette">{outfit.items.map((item) => <Chip key={item.id} hex={item.representativeHex} label={displayClothingColor(item)} />)}</div>
-            </details>
+            <div className="outfit-color-strip">
+              {outfit.items.map((item) => (
+                <span key={item.id} className="outfit-color-swatch" style={{ background: item.representativeHex }} title={item.type} />
+              ))}
+            </div>
+            <div className="recommend-item-strip">
+              {outfit.items.map((item) => (
+                <div key={item.id} className="outfit-item-thumb">
+                  <img src={clothingDisplayImage(item)} alt={item.type} />
+                  {item.fitGrade && <span className={`fit-badge fit-${item.fitGrade.toLowerCase()}`}>{item.fitGrade}</span>}
+                  <span className="item-type-label">{item.type}</span>
+                </div>
+              ))}
+            </div>
+            <div className="score-grade-row">
+              <span title={`퍼스널컬러 적합도 ${outfit.personalScore}점`}>퍼컬 <strong className={`grade-${scoreGrade(outfit.personalScore)}`}>{scoreGrade(outfit.personalScore)}</strong></span>
+              <span title={`색상 조화도 ${outfit.harmonyScore}점`}>조화 <strong className={`grade-${scoreGrade(outfit.harmonyScore)}`}>{scoreGrade(outfit.harmonyScore)}</strong></span>
+              <span title={`날씨 적합도 ${outfit.weatherScore}점`}>날씨 <strong className={`grade-${scoreGrade(outfit.weatherScore)}`}>{scoreGrade(outfit.weatherScore)}</strong></span>
+            </div>
             <button className="line-button" onClick={() => onSave(outfit)}>데일리룩 저장</button>
           </article>
         ))}
