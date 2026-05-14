@@ -44,6 +44,7 @@ import { SEASON_PROFILES } from './personalColorWorkbook';
 import { FAMILY_GUIDES, FAMILY_LABELS, PERSONAL_COLOR_MODEL_NOTE, SEASON_DETAILS } from './seasonContent';
 import { fuseResults } from './services/geminiService';
 import { TRAINING_CATALOG_ITEMS } from './data/trainingCatalog';
+import type { CatalogItem } from './data/trainingCatalog';
 import { deltaE2000, hexToRgb, rgbToHsl, rgbToLab } from './services/colorUtils';
 import { useWeather } from './hooks/useWeather';
 import { WeatherBand, WEATHER_BANDS } from './lib/weather';
@@ -74,26 +75,6 @@ interface Wardrobe {
   createdAt: string;
 }
 
-export interface CatalogItem {
-  catalogItemId: string;
-  name: string;
-  category: ClothingCategory;
-  subcategory: string;
-  imageUrl: string;
-  color: string;
-  size: string;
-  brand: string;
-  representativeColor: string;
-  representativeHex: string;
-  dominantColors: ClothingColorAnalysis[];
-  seasonTag: string;
-  patternType: PatternType;
-  material: MaterialType;
-  isNeutral: boolean;
-  isDenim: boolean;
-  denimWash?: DenimWash;
-  sourceType: 'catalog';
-}
 
 interface ClothingAnalysisMeta {
   part?: string;
@@ -1372,7 +1353,7 @@ function App() {
   };
 
   const updateSavedOutfitDailyLook = (id: string, dailyLookState: DailyLookState, itemIds?: string[]) => {
-    const sourceMap = new Map(dailyLookSourceItems.map((item) => [item.id, item]));
+    const sourceMap = new Map<string, ScoredClothingItem>(dailyLookSourceItems.map((item) => [item.id, item]));
     const uniqueItemIds = Array.from(new Set(itemIds));
     const next = savedOutfits.map((outfit) => {
       if (outfit.id !== id) return outfit;
@@ -2706,7 +2687,7 @@ function RecommendationList({ recommendations, onSave }: { recommendations: Outf
 
 // 저장된 추천 코디의 자동 배치 상태를 카드용 보드 미리보기로 렌더링합니다.
 function DailyLookBoardPreview({ outfit, items }: { outfit: SavedOutfit; items: ScoredClothingItem[] }) {
-  const itemById = new Map(items.map((item) => [item.id, item]));
+  const itemById = new Map<string, ScoredClothingItem>(items.map((item) => [item.id, item]));
   const state = outfit.dailyLookState ?? buildDailyLookState(outfit.itemIds.map((id) => itemById.get(id)).filter(Boolean) as ScoredClothingItem[]);
   return (
     <div className="saved-dailylook-board" aria-label={`${outfit.title} 자동 배치 미리보기`}>
@@ -2783,7 +2764,7 @@ function SavedOutfits({ saved, items, onDelete, onMakeDailyLook, onCreateDailyLo
 // 누끼가 없는 아이템은 onEnsureCutouts로 배경 제거를 시도한 뒤 레이어로 표시합니다.
 function TryOn({ saved, items, wardrobes, activeOutfitId, onSaveDailyLook, onEnsureCutouts, onBack }: { saved: SavedOutfit[]; items: ScoredClothingItem[]; wardrobes: Wardrobe[]; activeOutfitId: string | null; onSaveDailyLook: (id: string, state: DailyLookState, itemIds?: string[]) => void; onEnsureCutouts: (itemIds: string[]) => Promise<void>; onBack: () => void }) {
   const selectedOutfit = saved.find((outfit) => outfit.id === activeOutfitId) ?? saved[0];
-  const itemLookup = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const itemLookup = useMemo(() => new Map<string, ScoredClothingItem>(items.map((item) => [item.id, item])), [items]);
   const [draftItemIds, setDraftItemIds] = useState<string[]>(() => selectedOutfit?.itemIds ?? []);
   const dailyLookItems = useMemo(() => draftItemIds.map((id) => itemLookup.get(id)).filter(Boolean) as ScoredClothingItem[], [draftItemIds, itemLookup]);
   const [state, setState] = useState<DailyLookState>(() => buildDailyLookState(dailyLookItems, selectedOutfit?.dailyLookState));
@@ -2834,7 +2815,7 @@ function TryOn({ saved, items, wardrobes, activeOutfitId, onSaveDailyLook, onEns
     return <section className="page-stack"><PageTitle title="데일리룩 만들기" description="저장한 데일리룩을 이미지 조합으로 편집합니다." icon={<Bookmark />} /><EmptyState title="미리볼 데일리룩이 없습니다." description="추천에서 조합을 데일리룩으로 저장하면 이 화면에서 확인할 수 있습니다." /></section>;
   }
 
-  const itemById = new Map(dailyLookItems.map((item) => [item.id, item]));
+  const itemById = new Map<string, ScoredClothingItem>(dailyLookItems.map((item) => [item.id, item]));
   const selectedLayer = selectedLayerId ? state.layers.find((layer) => layer.itemId === selectedLayerId) : undefined;
   const selectedTextLayer = selectedTextId ? state.textLayers?.find((layer) => layer.id === selectedTextId) : undefined;
   const hasCanvasContent = dailyLookItems.length > 0 || Boolean(state.textLayers?.length);

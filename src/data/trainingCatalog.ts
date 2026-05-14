@@ -1,5 +1,30 @@
 // 퍼스널컬러 ML 모델 학습에 사용된 516개 의류 이미지로 구성된 카탈로그 데이터입니다.
-import type { CatalogItem } from '../App';
+
+type ClothingCategory = '상의' | '하의' | '아우터' | '신발' | '액세서리';
+type PatternType = 'solid' | 'stripe' | 'plaid' | 'graphic';
+type MaterialType = 'cotton' | 'denim' | 'knit' | 'leather' | 'nylon' | 'wool' | 'unknown';
+type DenimWash = 'light' | 'mid' | 'dark' | 'black';
+
+export interface CatalogItem {
+  catalogItemId: string;
+  name: string;
+  category: ClothingCategory;
+  subcategory: string;
+  imageUrl: string;
+  color: string;
+  size: string;
+  brand: string;
+  representativeColor: string;
+  representativeHex: string;
+  dominantColors: { hex?: string; ratio?: number }[];
+  seasonTag: string;
+  patternType: PatternType;
+  material: MaterialType;
+  isNeutral: boolean;
+  isDenim: boolean;
+  denimWash?: DenimWash;
+  sourceType: 'catalog';
+}
 
 export const TRAINING_CATALOG_ITEMS: CatalogItem[] = [
   { catalogItemId: "upper_shirt_001", name: "상의 셔츠", category: "상의" as const, subcategory: "셔츠", imageUrl: "/catalog/upper_shirt_001.png", color: "#282733", size: "FREE", brand: "학습 데이터", representativeColor: "#282733", representativeHex: "#282733", dominantColors: [{ hex: "#282733", ratio: 0.4909 }, { hex: "#766D6C", ratio: 0.3886 }, { hex: "#CEC0B1", ratio: 0.1205 }], seasonTag: "봄/가을", patternType: "solid" as const, material: "unknown" as const, isNeutral: false, isDenim: false, sourceType: "catalog" as const },
