@@ -35,6 +35,7 @@ export default defineConfig({
   server: {
     allowedHosts: ['.trycloudflare.com'],
     hmr: process.env.DISABLE_HMR !== 'true',
+    headers: { 'Cache-Control': 'no-store' },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8001',
