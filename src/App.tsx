@@ -46,6 +46,7 @@ import { fuseResults } from './services/geminiService';
 import { TRAINING_CATALOG_ITEMS } from './data/trainingCatalog';
 import type { CatalogItem } from './data/trainingCatalog';
 import { deltaE2000, hexToRgb, rgbToHsl, rgbToLab } from './services/colorUtils';
+import type { LabColor } from './services/colorUtils';
 import { useWeather } from './hooks/useWeather';
 import { WeatherBand, WEATHER_BANDS } from './lib/weather';
 import { FinalResult, PhotoAnalysisResult, QuestionnaireScores, SeasonId } from './types';
@@ -868,8 +869,23 @@ function gradeFromScore(score: number): FitGrade {
   return 'CHECK';
 }
 
+// 단일 HEX에 대해 팔레트 점수와 회피 페널티를 계산합니다.
+function scoreSingleHex(
+  hex: string,
+  paletteLabs: LabColor[],
+  avoidLabs: LabColor[],
+): { paletteScore: number; avoidPenalty: number } {
+  const lab = rgbToLab(hexToRgb(hex));
+  const paletteDistance = Math.min(...paletteLabs.map((p) => deltaE2000(lab, p)));
+  const avoidDistance = avoidLabs.length ? Math.min(...avoidLabs.map((a) => deltaE2000(lab, a))) : 100;
+  return {
+    paletteScore: Math.max(0, 100 - paletteDistance * 4.5),
+    avoidPenalty: avoidDistance < 10 ? 22 : avoidDistance < 16 ? 10 : 0,
+  };
+}
+
 // 의류 대표색과 사용자의 퍼스널컬러 팔레트를 비교해 의류 적합도를 계산합니다.
-// 추천 팔레트와 가까우면 점수가 올라가고, 피해야 할 색과 가까우면 감점됩니다.
+// dominantColors 배열이 있으면 최대 3색을 비율 가중 평균으로 매칭해 체크/스트라이프 의류 정확도를 높입니다.
 function scoreItemForPersonalColor(item: ClothingItem, result: FinalResult | null): ScoredClothingItem {
   if (!result) {
     return {
@@ -881,21 +897,35 @@ function scoreItemForPersonalColor(item: ClothingItem, result: FinalResult | nul
     };
   }
 
-  const itemLab = rgbToLab(hexToRgb(item.representativeHex));
-  const paletteDistance = Math.min(...result.palette.map((hex) => deltaE2000(itemLab, rgbToLab(hexToRgb(hex)))));
   const worstColors = SEASON_DETAILS[result.seasonTop1Id]?.worstColors ?? [];
-  const avoidDistance = worstColors.length ? Math.min(...worstColors.map((hex) => deltaE2000(itemLab, rgbToLab(hexToRgb(hex))))) : 100;
-  const paletteScore = Math.max(0, 100 - paletteDistance * 4.5);
+  const paletteLabs = result.palette.map((hex) => rgbToLab(hexToRgb(hex)));
+  const avoidLabs = worstColors.map((hex) => rgbToLab(hexToRgb(hex)));
+
+  // dominantColors가 있으면 상위 3색 비율 가중 평균, 없으면 대표색 단일값 사용
+  const colorSamples: { hex: string; ratio: number }[] =
+    item.dominantColors && item.dominantColors.length > 0
+      ? item.dominantColors.slice(0, 3).map((c) => ({ hex: c.hex ?? item.representativeHex, ratio: c.ratio ?? 1 }))
+      : [{ hex: item.representativeHex, ratio: 1 }];
+
+  const totalRatio = colorSamples.reduce((sum, c) => sum + c.ratio, 0) || 1;
+  let weightedPaletteScore = 0;
+  let weightedAvoidPenalty = 0;
+  for (const { hex, ratio } of colorSamples) {
+    const w = ratio / totalRatio;
+    const { paletteScore, avoidPenalty } = scoreSingleHex(hex, paletteLabs, avoidLabs);
+    weightedPaletteScore += paletteScore * w;
+    weightedAvoidPenalty += avoidPenalty * w;
+  }
+
   const utilityBonus = item.isNeutral || item.isDenim ? 8 : 0;
-  const avoidPenalty = avoidDistance < 10 ? 22 : avoidDistance < 16 ? 10 : 0;
-  const score = Math.max(0, Math.min(100, Math.round(paletteScore + utilityBonus - avoidPenalty)));
+  const score = Math.max(0, Math.min(100, Math.round(weightedPaletteScore + utilityBonus - weightedAvoidPenalty)));
 
   return {
     ...item,
     personalFitScore: score,
     fitGrade: gradeFromScore(score),
     fitReason: `${SEASON_LABELS[result.seasonTop1Id]} 팔레트 기준 ${score}점`,
-    avoidRisk: avoidPenalty > 0,
+    avoidRisk: weightedAvoidPenalty > 5,
   };
 }
 
